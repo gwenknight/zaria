@@ -10,6 +10,7 @@ library(rworldmap)
 library(RColorBrewer)
 library(reshape2)
 library(DT)
+library("shinyMatrix")
 
 ###********************************************************************************************************************************************************************#####
 #### REQUIRED DATA AND FUNCTIONS ####
@@ -31,6 +32,8 @@ ecdc_countries <- c("Austria","Belgium","Bulgaria","Croatia","Cyprus","Czech Rep
                     "Lithuania","Luxembourg","Malta","Netherlands","Norway","Poland",
                     "Portugal","Romania","Slovakia","Slovenia","Spain","Sweden","United Kingdom")
 
+
+
 ###********************************************************************************************************************************************************************#####
 #### SHINY CODE ####
 ###********************************************************************************************************************************************************************#####
@@ -40,7 +43,7 @@ ui <- fluidPage(
     tags$style(HTML("hr {border-top: 1px solid #000000;}"))
   ),
   
-  titlePanel("Empiric Prescribing"),
+  titlePanel("Empiric Prescribing ZAR:IA: Zambia focus"),
   
   sidebarPanel(h1("Syndrome"),
                
@@ -56,11 +59,11 @@ ui <- fluidPage(
                              "Bacterial meningitis" = "meng",
                              "Septic arthritis" = "sepa")),
                
-               # Age input
-               selectInput("age", "Age", 
-                           c("Adult" = "adult",
-                             "Child" = "child",
-                             "Neonate" = "infant")),
+               # # Age input
+               # selectInput("age", "Age", 
+               #             c("Adult" = "adult",
+               #               "Child" = "child",
+               #               "Neonate" = "infant")),
                
                hr(), 
                
@@ -72,11 +75,38 @@ ui <- fluidPage(
                # Resistance cutoff input
                numericInput("res_cut", em("Resistance cutoff (%)"), 15, min = 0, max = 100),
                
-               # Which data? 
-               checkboxGroupInput("checkGroup", label = em("Data to include"),
-                                  c("ATLAS", "GLASS", "RESISTANCEMAP" = "RESIST",
-                                    "ECDC"),
-                                  selected = "ATLAS")
+               # Input: Select a file ----
+               fileInput("file1", "Choose CSV File",
+                         multiple = FALSE,
+                         accept = c("text/csv",
+                                    "text/comma-separated-values,text/plain",
+                                    ".csv")),
+               
+               # Horizontal line ----
+               tags$hr(),
+               
+               # Input: Checkbox if file has header ----
+               checkboxInput("header", "Header", TRUE),
+               
+               # Input: Select separator ----
+               radioButtons("sep", "Separator",
+                            choices = c(Comma = ",",
+                                        Semicolon = ";",
+                                        Tab = "\t"),
+                            selected = ","),
+               
+               # Input: Select quotes ----
+               radioButtons("quote", "Quote",
+                            choices = c(None = "",
+                                        "Double Quote" = '"',
+                                        "Single Quote" = "'"),
+                            selected = '"'),
+               
+               # # Which data? 
+               # checkboxGroupInput("checkGroup", label = em("Data to include"),
+               #                    c("ATLAS", "GLASS", "RESISTANCEMAP" = "RESIST",
+               #                      "ECDC"),
+               #                    selected = "ATLAS")
   ),
   
   mainPanel(
@@ -103,15 +133,27 @@ ui <- fluidPage(
                          h6("WHO EML: Based on The International Medical Products Price Guide (2015)."),
                          h6("AWaRe: Based on the 2017 World Health Organisation Essential Medicines List, for those in multiple categories for different indications the most severe AWaRe grouping was assigned"),
                          dataTableOutput('econ')),
-                # Third tab: map of resistance prevalence to first line
-                tabPanel("Output: Map of resistance prevalence",
-                         h4("Maps of prevalence of resistance to drugs in first line therapy"),
-                         textOutput("text1"),
-                         plotOutput("coolplot"),
-                         h6("Countries shaded grey had no data. Countries with hatching had less than 10 isolates to inform prevalence."),
-                         hr(),
-                         textOutput("text2"),
-                         plotOutput("coolplot2")),
+                # Third tab: input resistances
+                # tabPanel("Input: Resistance levels",
+                #          matrixInput(
+                #            "sample",
+                #            value = m,
+                #            rows = list(
+                #              extend = TRUE
+                #            ),
+                #            cols = list(
+                #              names = TRUE
+                #            )
+                #          )),
+                # # Third tab: map of resistance prevalence to first line
+                # tabPanel("Output: Map of resistance prevalence",
+                #          h4("Maps of prevalence of resistance to drugs in first line therapy"),
+                #          textOutput("text1"),
+                #          plotOutput("coolplot"),
+                #          h6("Countries shaded grey had no data. Countries with hatching had less than 10 isolates to inform prevalence."),
+                #          hr(),
+                #          textOutput("text2"),
+                #          plotOutput("coolplot2")),
                 # Fourth tab: Underlying data table
                 tabPanel("Output: Table of data", 
                          dataTableOutput("results")),
@@ -651,6 +693,32 @@ server <- function(input, output) {
     
   })
   
+  ### ****************************************************************************************************************************************###
+  # OUTPUT$MATRIX - Functions for creating MATRIX OF RELEVANT RESISTANCE TO INPUT
+  ### ****************************************************************************************************************************************###
+  
+  # output$matrix_res <- renderUI({
+  #   
+  #   synd <- input$variable
+  #   pvars <- as.character(sp_all[,1]) #as.character(unique(datam_map$Species)) # all species in data used 
+  #   
+  #   sp_b <- melt(sp_bkdwn[which(sp_bkdwn[,1] == synd),],id.vars = "syndrome")
+  #   sp_b$variable <- gsub(".", ' ', sp_b$variable, fixed = T)
+  #   ## Need "Streptococcus, viridans group"
+  #   g <- grep("viri",sp_b$variable)
+  #   sp_b[g,"variable"] <- "Streptococcus, viridans group"
+  #   
+  #   values_slid <- filter(sp_b, variable %in% pvars)
+  #   
+  #   lapply(seq(values_slid$variable), function(i) {
+  #     sliderInput(inputId = paste0("range",i),
+  #                 label = em(values_slid$variable[i]),
+  #                 min = 0, max = 100, value = values_slid$value[i])
+  #   })
+  #   
+  #   
+  #   
+  # })
   
   ### ****************************************************************************************************************************************###
   # OUTPUT$COOLPLOTX - Functions for creating MAP OF PREVALENCE of resistance to first line drugs in first line therapy
