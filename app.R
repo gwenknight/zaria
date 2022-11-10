@@ -10,27 +10,42 @@ library(rworldmap)
 library(RColorBrewer)
 library(reshape2)
 library(DT)
+library(readxl)  
+library(tidyverse)
+library(magrittr)
 library("shinyMatrix")
+library(tidytext)
 
 ###********************************************************************************************************************************************************************#####
 #### REQUIRED DATA AND FUNCTIONS ####
 ###********************************************************************************************************************************************************************#####
 
-datam_map_all <- read.csv("all_datasets.csv", stringsAsFactors = FALSE, fileEncoding="UTF-8-BOM") # aggregated data
 drg_bkdwn <- read.csv("drug_bkdwn.csv", fileEncoding="UTF-8-BOM") # baseline empiric therapy recommendations
 drg_bkdwn_group <- read.csv("drug_bkdwn_groups.csv", fileEncoding="UTF-8-BOM") # baseline empiric therapy recommendations with drug groupings instead of individual drugs
-sp_bkdwn <- read.csv("sp_bkdwn.csv", fileEncoding="UTF-8-BOM") # baseline contributing bacteria distributions
+sp_bkdwn_lit <- read_csv("sp_bkdwn.csv") # baseline contributing bacteria distributions from literature
+sp_bkdwn_zambia <- read_csv("sp_bkdwn_zambia.csv") # baseline contributing bacteria distributions from Zambia
 sp_all <- read.csv("sp_all.csv", fileEncoding="UTF-8-BOM") # has just the list of species to include
-econ <- read.csv("econ_data.csv", fileEncoding="UTF-8-BOM")[,-1] # economic data: WHO EML and AWaRE
 
 # Function to keep NAs if all NA
 suma = function(x) if (all(is.na(x))) x[NA_integer_] else max(x, na.rm = TRUE)
 
-# To map just ECDC data countries
-ecdc_countries <- c("Austria","Belgium","Bulgaria","Croatia","Cyprus","Czech Rep.","Denmark","Estonia","Finland","France",
-                    "Germany","Greece","Hungary","Iceland","Ireland","Italy","Latvia",
-                    "Lithuania","Luxembourg","Malta","Netherlands","Norway","Poland",
-                    "Portugal","Romania","Slovakia","Slovenia","Spain","Sweden","United Kingdom")
+# Remove all in column 
+not_all_na <- function(x) any(!is.na(x))
+
+# To read in excel data sheets
+read_excel_allsheets <- function(filename, tibble = FALSE) {
+  # I prefer straight data.frames
+  # but if you like tidyverse tibbles (the default with read_excel)
+  # then just pass tibble = TRUE
+  sheet <- readxl::excel_sheets(filename)
+  
+  data_frame = lapply(setNames(sheet, sheet), 
+                      function(x) read_excel(filename, sheet=x, skip = 1))
+  
+  # attaching all dataframes together
+  data_frame = bind_rows(data_frame, .id="Sheet")
+  return(data_frame)
+}
 
 
 
@@ -45,7 +60,7 @@ ui <- fluidPage(
   
   titlePanel("Empiric Prescribing ZAR:IA: Zambia focus"),
   
-  sidebarPanel(h1("Syndrome"),
+  sidebarPanel(h1("Inputs"),
                
                # Syndrome input
                selectInput("variable", "Choose syndrome:",
@@ -67,46 +82,107 @@ ui <- fluidPage(
                
                hr(), 
                
-               h4("Optional inputs"),
-               
-               # Barchart of bug composition
-               plotOutput("inputplot"),
                
                # Resistance cutoff input
                numericInput("res_cut", em("Resistance cutoff (%)"), 15, min = 0, max = 100),
                
-               # Input: Select a file ----
-               fileInput("file1", "Choose CSV File",
-                         multiple = FALSE,
-                         accept = c("text/csv",
-                                    "text/comma-separated-values,text/plain",
-                                    ".csv")),
-               
                # Horizontal line ----
                tags$hr(),
                
-               # Input: Checkbox if file has header ----
-               checkboxInput("header", "Header", TRUE),
+               # Input: Select a file ----
+               fileInput("file_res", "Resistance distribution: Choose XLS File",
+                         multiple = FALSE
+                         # accept = c("text/csv",
+                         #            "text/comma-separated-values,text/plain",
+                         #            ".csv")
+               ),
                
-               # Input: Select separator ----
-               radioButtons("sep", "Separator",
-                            choices = c(Comma = ",",
-                                        Semicolon = ";",
-                                        Tab = "\t"),
-                            selected = ","),
+               fileInput("file_cost", "Cost distribution: Choose XLS File",
+                         multiple = FALSE
+                         # accept = c("text/csv",
+                         #            "text/comma-separated-values,text/plain",
+                         #            ".csv")
+               ),
                
-               # Input: Select quotes ----
-               radioButtons("quote", "Quote",
-                            choices = c(None = "",
-                                        "Double Quote" = '"',
-                                        "Single Quote" = "'"),
-                            selected = '"'),
+               hr(), 
                
-               # # Which data? 
-               # checkboxGroupInput("checkGroup", label = em("Data to include"),
-               #                    c("ATLAS", "GLASS", "RESISTANCEMAP" = "RESIST",
-               #                      "ECDC"),
-               #                    selected = "ATLAS")
+               h4("Therapy options"),
+               
+               # Therapy input
+               selectInput(inputId = 'drug1.1',
+                           label = '1st: Choose a first line, first drug:',
+                           choices = read.csv("data/antibiotics_avail.csv", header = FALSE)),
+               
+               # Therapy input
+               selectInput(inputId = 'drug1.2',
+                           label = 'Choose a first line, second drug (if required):',
+                           choices = read.csv("data/antibiotics_avail.csv", header = FALSE)),
+               
+               # Therapy input
+               selectInput(inputId = 'drug1.3',
+                           label = 'Choose a first line, third drug (if required):',
+                           choices = read.csv("data/antibiotics_avail.csv", header = FALSE)),
+               
+               hr(), 
+               
+               # Therapy input
+               selectInput(inputId = 'drug2.1',
+                           label = '2nd: Choose a second line, first drug:',
+                           choices = read.csv("data/antibiotics_avail.csv", header = FALSE)),
+               
+               # Therapy input
+               selectInput(inputId = 'drug2.2',
+                           label = 'Choose a second line, second drug (if required):',
+                           choices = read.csv("data/antibiotics_avail.csv", header = FALSE)),
+               
+               # Therapy input
+               selectInput(inputId = 'drug2.3',
+                           label = 'Choose a second line, third drug (if required):',
+                           choices = read.csv("data/antibiotics_avail.csv", header = FALSE)),
+               hr(), 
+               
+               # Therapy input
+               selectInput(inputId = 'drug3.1',
+                           label = '3rd: Choose a third line, first drug:',
+                           choices = read.csv("data/antibiotics_avail.csv", header = FALSE)),
+               
+               # Therapy input
+               selectInput(inputId = 'drug3.2',
+                           label = 'Choose a third line, second drug (if required):',
+                           choices = read.csv("data/antibiotics_avail.csv", header = FALSE)),
+               
+               # Therapy input
+               selectInput(inputId = 'drug3.3',
+                           label = 'Choose a third line, third drug (if required):',
+                           choices = read.csv("data/antibiotics_avail.csv", header = FALSE)),
+               
+               hr(), 
+               
+               # Therapy input
+               selectInput(inputId = 'drug4.1',
+                           label = '4th: Choose a fourth line, first drug:',
+                           choices = read.csv("data/antibiotics_avail.csv", header = FALSE)),
+               
+               # Therapy input
+               selectInput(inputId = 'drug4.2',
+                           label = 'Choose a fourth line, second drug (if required):',
+                           choices = read.csv("data/antibiotics_avail.csv", header = FALSE)),
+               
+               # Therapy input
+               selectInput(inputId = 'drug4.3',
+                           label = 'Choose a fourth line, third drug (if required):',
+                           choices = read.csv("data/antibiotics_avail.csv", header = FALSE)),
+               
+               hr(), 
+               
+               h4("Bacterial distribution inputs"),
+               
+               # Copy the line below to make a checkbox
+               checkboxInput("checkbox", label = "Zambian data", value = FALSE),
+               
+               # Barchart of bug composition
+               plotOutput("inputplot")
+               
   ),
   
   mainPanel(
@@ -124,51 +200,26 @@ ui <- fluidPage(
                          uiOutput("sliders"),
                          h6("Proportions must sum to 100")
                 ),
-                # Second tab: input of empiric therapy and economics
-                tabPanel("Input: Empiric therapy guidelines",
-                         tableOutput("empirictherapy"),
-                         h2(""),
-                         h4("WHO Essential Medicines List (EML) and AWaRE data"),
-                         h6("Costs: Costs presented are in Dec. 2017 USD."),
-                         h6("WHO EML: Based on The International Medical Products Price Guide (2015)."),
-                         h6("AWaRe: Based on the 2017 World Health Organisation Essential Medicines List, for those in multiple categories for different indications the most severe AWaRe grouping was assigned"),
-                         dataTableOutput('econ')),
-                # Third tab: input resistances
-                # tabPanel("Input: Resistance levels",
-                #          matrixInput(
-                #            "sample",
-                #            value = m,
-                #            rows = list(
-                #              extend = TRUE
-                #            ),
-                #            cols = list(
-                #              names = TRUE
-                #            )
-                #          )),
-                # # Third tab: map of resistance prevalence to first line
-                # tabPanel("Output: Map of resistance prevalence",
-                #          h4("Maps of prevalence of resistance to drugs in first line therapy"),
-                #          textOutput("text1"),
-                #          plotOutput("coolplot"),
-                #          h6("Countries shaded grey had no data. Countries with hatching had less than 10 isolates to inform prevalence."),
-                #          hr(),
-                #          textOutput("text2"),
-                #          plotOutput("coolplot2")),
-                # Fourth tab: Underlying data table
-                tabPanel("Output: Table of data", 
-                         dataTableOutput("results")),
-                # Fifth tab: Map and table of therapy recommendations
-                tabPanel("Output: Therapy recommendations",
-                         verbatimTextOutput("text_warning_glas2"), # data warnings 
-                         verbatimTextOutput("text_warning_resm2"),
-                         verbatimTextOutput("text_warning_ecdc2"),
-                         # textOutput("text1") #,
-                         plotOutput("trafficplot"),
-                         h6("Linked to Resistance cutoff value. Countries shaded grey had no data.
-                            If no image, then there is not enough data for recommendations"),
-                         h4("Recommendations for therapy"),
-                         tableOutput("recc")
+                
+                # Second tab: Underlying data table
+                tabPanel("Output: Data Visualisation", 
+                         plotOutput("dataplot")),
+                
+                # Third tab: outputs
+                tabPanel("Output: Table of recommendations.",
+                         tableOutput("recctable"), 
+                         h6("*SRL = Syndrome resistance level to this antibiotic (%)"),
+                         h6("Note a therapy is not recommended if the SRL for any antibiotic is over the inputted threshold."),
+                         h6("*Miss 1st/2nd/3rd (%) = Percentage of the bacteria causing this syndrome for which there is no resistance data for this antibiotic (1st / 2nd / 3rd drug in combination where relevant)."),
+                         h6("*(Med, High SRL 1st/2nd/3rd) assumes 50% or 100% resistance, respectively, in the missing bacteria, instead of 0% resistance as assumed in the main SRL."),
+                         tableOutput("sample_prop"),
+                         h6("The threshold for sampling is the maximum percentage of this syndrome that is sampled in this dataset in order to push the overall resistance below the inputted resistance threshold assuming all other bacteria causing this syndrome 
+                         are totally susceptible. It is NA if the resistance prevalence is already below the threshold."), 
+                         h6("e.g. if resistance = 50% in the proportion sampled and the threshold cutoff is 15%, then to recommend use of this therapy a maximum of 30% of patients with this syndrome should be sampled and in the data. The other 70% of patients with this syndrome need to “not be in the data and have a syndrome caused by a bacteria that is totally susceptible” for resistance to be below the inputted threshold.")
                 )
+                
+                
+                
     )
   )
 )
@@ -185,129 +236,33 @@ server <- function(input, output) {
   
   # Reactive dependencies - if these change then MODEL will run again and update values
   xxchange <- reactive({
-    paste(input$variable, input$age, input$checkGroup, 
+    paste(input$variable, input$age, input$checkGroup, input$checkbox, 
           input$range1, input$range2, input$range3, input$range4, 
           input$range5, input$range6, input$range7, input$range8,
           input$range9, input$range10, input$range11, input$range12,
           input$range13, input$range14, input$range15, input$range16,
-          input$range17, input$range18)
+          input$range17, input$range18,
+          input$drug1.1,input$drug1.2,input$drug1.3,input$drug2.1,input$drug2.2,input$drug2.3,
+          input$drug3.1,input$drug3.2,input$drug3.3,input$drug4.1,input$drug4.2,input$drug4.3)
   })
   
-  # New data subset
-  model <- eventReactive(xxchange(), {
-    
-    # Which dataset? 
-    data2 <- datam_map_all[datam_map_all$Dataset %in% input$checkGroup,]
-    
-    # needed function
-    suma = function(x) if (all(is.na(x))) x[NA_integer_] else max(x, na.rm = TRUE)
-    
-    # Take averages over datasets in checkgroup
-    datam_map <- data2 %>%
-      dplyr::group_by(Country,syndrome,Species,variable) %>%
-      dplyr::summarise(rate_r=mean(rate_r), Prop_Syn = mean(Prop_Syn),n = sum(n))
-    
-    # Which syndrome? 
-    synd <- input$variable
-    # What age?
-    age <- input$age
-    
-    # Subset of data for this syndrome
-    datam_map2 <- datam_map[which(datam_map$syndrome == synd),]
-    
-    # If not ATLAS then have to use grouped drugs
-    if(length(input$checkGroup) > 1 || input$checkGroup != "ATLAS"){
-      drg_bkdwn <- drg_bkdwn_group
-    }
-    
-    # Drugs for this synd
-    d11 <- as.character(drg_bkdwn[intersect(which(drg_bkdwn$syndrome == synd),which(drg_bkdwn$Age == age)),"First.line.1st.drug"])
-    d12 <- as.character(drg_bkdwn[intersect(which(drg_bkdwn$syndrome == synd),which(drg_bkdwn$Age == age)),"First.line.2nd.drug"])
-    d21 <- as.character(drg_bkdwn[intersect(which(drg_bkdwn$syndrome == synd),which(drg_bkdwn$Age == age)),"Second.line.1st.drug"])
-    d22 <- as.character(drg_bkdwn[intersect(which(drg_bkdwn$syndrome == synd),which(drg_bkdwn$Age == age)),"Second.line.2nd.drug"])
-    d3 <- as.character(drg_bkdwn[intersect(which(drg_bkdwn$syndrome == synd),which(drg_bkdwn$Age == age)),"Third.line.1st.drug"])
-    
-    pvars <- as.character(sp_all[,1]) # all species to be included
-    
-    # Species for this syndrome  
-    sp_b <- melt(sp_bkdwn[which(sp_bkdwn[,1] == synd),],id.vars = "syndrome")
-    sp_b$variable <- gsub(".", ' ', sp_b$variable, fixed = T)
-    ## Need "Streptococcus, viridans group"
-    g <- grep("viri",sp_b$variable)
-    sp_b[g,"variable"] <- "Streptococcus, viridans group"
-    
-    # Values for the proportions are those given by the sliders 
-    values_slid <- filter(sp_b, variable %in% pvars)
-    
-    pvars_use <- pvars
-    names <- c()
-    for(i in 1:length(pvars_use)){names <- c(names,paste0("range", i))}
-    
-    values <- c()
-    for(i in 1:length(pvars_use)){values <- c(values,input[[names[i]]])}
-    
-    # Data for barchart of proportions
-    bar_plot_data <- as.data.frame(cbind(rep(1, length(values)),values))
-    colnames(bar_plot_data) <- c("x","value")
-    bar_plot_data$Species <- values_slid$variable
-    
-    ## New levels from input bars in bar_plot_data
-    # merge with resistance data 
-    datam_map_new <- merge(datam_map2, bar_plot_data, by = "Species")
-    # update with new values
-    datam_map_new$Prop_Syn <- datam_map_new$value/100 
-    datam_map_new$res_prop <- 100*datam_map_new$Prop_Syn * datam_map_new$rate_r
-    
-    ## Group by country
-    datam_c <- datam_map_new %>%
-      dplyr::group_by(Country, syndrome, variable) %>%
-      dplyr::summarise(res_perc=sum(res_prop), n = sum(n))
-    
-    # Add in column - if less than 10 isolates
-    w<-which(datam_c$n > 10)
-    datam_c$n10 <- 100
-    datam_c[w,"n10"] <- 40
-    
-    # Data for drug one and potentially two in first line therapy
-    datam_map_new_d11 <- as.data.frame(datam_c[which(datam_c$variable == d11),])
-    datam_map_new_d12 <- as.data.frame(datam_c[which(datam_c$variable == d12),])
-    
-    ### Map resistance proportion in this syndrome
-    europe_11 <- 0;europe_12 <- 0
-    mapped_data_d11 <-0; mapped_data_d12 <- 0;
-    new_world_11 <-0; new_world_12 <- 0;
-    
-    # indicators for printing plots - only under certain conditions - FUTURE area to update: more sophisticated warnings around plot output
-    p1 <- 0; p2 <- 0; p3 <- 0; 
-    
-    # Only if data will map data be generated and plotted
-    if(dim(datam_map_new_d11)[1] > 1){
-      p1 <- 1; # PRINT
-      mapped_data_d11 <- joinCountryData2Map(datam_map_new_d11, joinCode = "NAME", nameJoinColumn = "Country")
-      
-      new_world_11 <- subset(mapped_data_d11, continent != "Antarctica") # remove Antartica
-      if(length(input$checkGroup) == 1 && input$checkGroup == "ECDC"){europe_11 <- subset(mapped_data_d11, NAME%in%ecdc_countries)}} # if only ECDC data
-    
-    if(dim(datam_map_new_d12)[1] > 1){
-      p2 <- 1; # PRINT
-      mapped_data_d12 <- joinCountryData2Map(datam_map_new_d12, joinCode = "NAME", nameJoinColumn = "Country")
-      
-      new_world_12 <- subset(mapped_data_d12, continent != "Antarctica")
-      if(length(input$checkGroup) == 1 && input$checkGroup == "ECDC"){europe_12 <- subset(mapped_data_d12, NAME%in%ecdc_countries)}}
-    
-    ## CHECK IF ANY data
-    datam_any <- which(unique(datam_c$variable) %in% c(d11,d12,d21,d22,d3))
-    if(length(datam_any) > 0){p3 <- 1} # DON"T PRINT ANYTHING IF NO DATA - FUTURE area to update: earlier warnings / prevent user going further 
-    
-    # return all object as a list
-    list(datam_map = datam_map, datam_c = datam_c, pvars = pvars, 
-         d11 = d11, d12 = d12, d21 = d21, d22 = d22, d3 = d3,
-         mapped_data_d11 = new_world_11, europe_map_11 = europe_11,
-         mapped_data_d12 = new_world_12, europe_map_12 = europe_12, p1 = p1, p2 = p2, p3 = p3)
-    
-  }
-  )
+  ## Input data
+  data_res <- reactive({
+    inFile <- input$file_res
+    if (is.null(inFile)) { return(NULL) }    
+    res_levels <- read_excel_allsheets(inFile$datapath)
+    res_levels <- res_levels %>% pivot_longer(cols = colnames(res_levels)[4]:last(colnames(res_levels)), values_to = "res_prop") %>% dplyr::rename(drug = name)
+    #res_levels[is.na(res_levels$res_prop),"res_prop"] <- 0 # Set to 0 if not data: TO CHECK IF KEEP as assumes no data = no resistance
+    return(res_levels)
+  })
   
+  
+  data_cost <- reactive({
+    inFile <- input$file_cost
+    if (is.null(inFile)) { return(NULL) }    
+    dataFile <- read_excel_allsheets(inFile$datapath)
+    #dataFile<-data.frame(EndoPaste(dataFile)[1],stringsAsFactors=FALSE)
+  })
   
   ### ****************************************************************************************************************************************###
   # TREAT - formulates the treatment decisions 
@@ -538,63 +493,6 @@ server <- function(input, output) {
   }
   )
   
-  ### ****************************************************************************************************************************************###
-  # OUTPUT$TEXTX - Warnings texts if no data
-  ### ****************************************************************************************************************************************###
-  
-  ### Text if no prevalence map
-  output$text1 <- renderText({
-    if(model()$p1 ==0) {paste0("No data for first line drug in this database")
-    }else{""}
-  })
-  
-  output$text2 <- renderText({
-    if(model()$p2 ==0){paste0("No data for second drug in first line therapy in this database")
-    }else{""}
-  })
-  
-  output$text3 <- renderText({
-    if(model()$p3 ==0) {paste0("No data for any of the therapy options in this database")
-    }else{""}
-  })
-  
-  ### ****************************************************************************************************************************************###
-  # OUTPUT$TEXT_WARNING_DATA - Warnings texts around syndromes included in each dataset
-  ### ****************************************************************************************************************************************###
-  
-  output$text_warning_ecdc <- renderText({
-    if("ECDC" %in% input$checkGroup){if(input$variable != "sep"){
-      "No data for this syndrome in the ECDC database: only sepsis is included."}else{""}
-    }else{""}
-  })
-  output$text_warning_resm <- renderText({
-    if("RESIST" %in% input$checkGroup){if(input$variable != "sep"){
-      "No data for this syndrome in the RESISTANCEMAP database: only sepsis is included."}else{""}
-    }else{""}
-  })
-  output$text_warning_glas <- renderText({
-    if("GLASS" %in% input$checkGroup){if(!input$variable %in% c("sep","c.uti","puc")){
-      "No data for this syndrome in the GLASS database: only sepsis,
-      complicated UTI and purulent urthritis / cervicitis are included."}else{""}
-    }else{""}
-  })
-  
-  output$text_warning_ecdc2 <- renderText({
-    if("ECDC" %in% input$checkGroup){if(input$variable != "sep"){
-      "No data for this syndrome in the ECDC database: only sepsis is included."}else{""}
-    }else{""}
-  })
-  output$text_warning_resm2 <- renderText({
-    if("RESIST" %in% input$checkGroup){if(input$variable != "sep"){
-      "No data for this syndrome in the RESISTANCEMAP database: only sepsis is included."}else{""}
-    }else{""}
-  })
-  output$text_warning_glas2 <- renderText({
-    if("GLASS" %in% input$checkGroup){if(!input$variable %in% c("sep","c.uti","puc")){
-      "No data for this syndrome in the GLASS database: only sepsis,
-      complicated UTI and purulent urthritis / cervicitis are included."}else{""}
-    }else{""}
-  })
   
   ### ****************************************************************************************************************************************###
   # OUTPUT$SLIDERS - generates sliders for contributing pathogen distribution 
@@ -604,6 +502,9 @@ server <- function(input, output) {
     
     synd <- input$variable
     pvars <- as.character(sp_all[,1]) #as.character(unique(datam_map$Species)) # all species in data used 
+    
+    if(input$checkbox){sp_bkdwn <- sp_bkdwn_zambia}else{sp_bkdwn <- sp_bkdwn_lit} # use literature or Zambian?
+    #if(!is.null(data_bacteria)){sp_bkdwn <- data_bacteria} # overwrite above 
     
     sp_b <- melt(sp_bkdwn[which(sp_bkdwn[,1] == synd),],id.vars = "syndrome")
     sp_b$variable <- gsub(".", ' ', sp_b$variable, fixed = T)
@@ -629,6 +530,9 @@ server <- function(input, output) {
     
     synd <- input$variable
     pvars <- as.character(sp_all[,1]) #as.character(unique(datam_map$Species)) # all species in data used 
+    
+    if(input$checkbox){sp_bkdwn <- sp_bkdwn_zambia}else{sp_bkdwn <- sp_bkdwn_lit} # use literature or Zambian?
+    #if(!is.null(data_bacteria)){sp_bkdwn <- data_bacteria} # overwrite above 
     
     sp_b <- melt(sp_bkdwn[which(sp_bkdwn[,1] == synd),],id.vars = "syndrome")
     sp_b$variable <- gsub(".", ' ', sp_b$variable, fixed = T)
@@ -656,6 +560,9 @@ server <- function(input, output) {
     
     synd <- input$variable
     pvars <- as.character(sp_all[,1]) #as.character(unique(datam_map$Species)) # all species in data used 
+    
+    if(input$checkbox){sp_bkdwn <- sp_bkdwn_zambia}else{sp_bkdwn <- sp_bkdwn_lit} # use literature or Zambian?
+    #if(!is.null(data_bacteria)){sp_bkdwn <- data_bacteria} # overwrite above 
     
     sp_b <- melt(sp_bkdwn[which(sp_bkdwn[,1] == synd),],id.vars = "syndrome")
     sp_b$variable <- gsub(".", ' ', sp_b$variable, fixed = T)
@@ -694,254 +601,339 @@ server <- function(input, output) {
   })
   
   ### ****************************************************************************************************************************************###
-  # OUTPUT$MATRIX - Functions for creating MATRIX OF RELEVANT RESISTANCE TO INPUT
+  # OUTPUT$RECCTABLE - recommendation table
   ### ****************************************************************************************************************************************###
   
-  # output$matrix_res <- renderUI({
-  #   
-  #   synd <- input$variable
-  #   pvars <- as.character(sp_all[,1]) #as.character(unique(datam_map$Species)) # all species in data used 
-  #   
-  #   sp_b <- melt(sp_bkdwn[which(sp_bkdwn[,1] == synd),],id.vars = "syndrome")
-  #   sp_b$variable <- gsub(".", ' ', sp_b$variable, fixed = T)
-  #   ## Need "Streptococcus, viridans group"
-  #   g <- grep("viri",sp_b$variable)
-  #   sp_b[g,"variable"] <- "Streptococcus, viridans group"
-  #   
-  #   values_slid <- filter(sp_b, variable %in% pvars)
-  #   
-  #   lapply(seq(values_slid$variable), function(i) {
-  #     sliderInput(inputId = paste0("range",i),
-  #                 label = em(values_slid$variable[i]),
-  #                 min = 0, max = 100, value = values_slid$value[i])
-  #   })
-  #   
-  #   
-  #   
-  # })
-  
-  ### ****************************************************************************************************************************************###
-  # OUTPUT$COOLPLOTX - Functions for creating MAP OF PREVALENCE of resistance to first line drugs in first line therapy
-  ### ****************************************************************************************************************************************###
-  
-  output$coolplot <- renderPlot({
+  output$recctable <- renderTable({
     
-    # Data
-    mapped_data <- model()$mapped_data_d11
-    if(length(input$checkGroup) == 1 && input$checkGroup == "ECDC"){mapped_data <- model()$europe_map_11}
+    # input syndrome
+    synd <- input$variable
+    pvars <- as.character(sp_all[,1]) #as.character(unique(datam_map$Species)) # all species in data used 
     
-    if(model()$p1 == 1){
-      cols <- rev(colorRampPalette(brewer.pal(11,"Spectral"), bias = 2)(13))
-      
-      ### Map resistance proportion in this syndrome
-      mapParams <- mapCountryData(mapped_data, nameColumnToPlot = "res_perc", 
-                                  catMethod = seq(0,100,5),
-                                  colourPalette = cols, 
-                                  addLegend = FALSE, 
-                                  mapTitle = paste0("Percentage of syndrome isolates that are
-                                \nresistant to first line empirical therapy: ",model()$d11),
-                                  missingCountryCol = gray(.8),
-                                  nameColumnToHatch = "n10")
-      do.call( addMapLegend, c( mapParams
-                                , legendLabels="all"
-                                , legendWidth=0.5))
+    if(input$checkbox){sp_bkdwn <- sp_bkdwn_zambia}else{sp_bkdwn <- sp_bkdwn_lit} # use literature or Zambian?
+    # if(!is.null(data_bacteria)){sp_bkdwn <- data_bacteria} # overwrite above 
+    
+    sp_b <- melt(sp_bkdwn[which(sp_bkdwn[,1] == synd),],id.vars = "syndrome")
+    sp_b$variable <- gsub(".", ' ', sp_b$variable, fixed = T)
+    ## Need "Streptococcus, viridans group"
+    g <- grep("viri",sp_b$variable)
+    sp_b[g,"variable"] <- "Streptococcus, viridans group"
+    
+    values_slid <- filter(sp_b, variable %in% pvars)
+    
+    pvars_use <- pvars
+    names <- c()
+    for(i in 1:length(pvars_use)){names <- c(names,paste0("range", i))}
+    
+    values <- c()
+    for(i in 1:length(pvars_use)){values <- c(values,input[[names[i]]])}
+    
+    # bar_plot data
+    bar_plot_data <- as.data.frame(cbind(rep(1, length(values)),values))
+    colnames(bar_plot_data) <- c("x","value")
+    bar_plot_data$Bacteria <- values_slid$variable
+    
+    res_levels <- data_res() 
+    cost <- data_cost() 
+    
+    #res_levels
+    
+    ## What were the inputted therapy drugs?
+    therapy_choices <- as.data.frame(cbind(c(1.1, 1.2, 1.3, 2.1, 2.2, 2.3, 3.1, 3.2, 3.3, 4.1, 4.2, 4.3),
+                                           c(input$drug1.1,
+                                             input$drug1.2,
+                                             input$drug1.3,
+                                             input$drug2.1,
+                                             input$drug2.2,
+                                             input$drug2.3,
+                                             input$drug3.1,
+                                             input$drug3.2,
+                                             input$drug3.3,
+                                             input$drug4.1,
+                                             input$drug4.2,
+                                             input$drug4.3))) %>%
+      set_colnames(c("line","drug")) %>%
+      filter(drug != "blank")
+    
+    # therapy_choices <- as.data.frame(cbind(
+    #   c(1.1, 1.2, 1.3, 2.1, 2.2, 2.3, 3.1, 3.2, 3.3, 4.1,4.2, 4.3),
+    #   c("Ampicillin","blank", "blank","Cefazolin","blank","blank","Cefotaxime","blank","blank","Cephalothin","blank","blank"))) %>%
+    #   set_colnames(c("line","drug")) %>%
+    #   filter(drug != "blank")
+    
+    ### Add in upper and medium resistance levels if data missing 
+    res_levels <- res_levels %>% mutate(res_prop_high = res_prop,res_prop_med = res_prop)
+    res_levels[is.na(res_levels$res_prop_high),"res_prop_high"] <- 1
+    res_levels[is.na(res_levels$res_prop_med),"res_prop_med"] <- 0.5
+    
+    table_output <- res_levels %>% filter(Sheet == input$variable) %>%
+      right_join(therapy_choices) %>%
+      left_join(bar_plot_data) %>%
+      mutate(level_res_bug = res_prop * value, level_res_bug_high = res_prop_high * value,level_res_bug_med = res_prop_med * value) %>% 
+      group_by(drug, line) %>%
+      dplyr::summarise(synd_res_level = sum(level_res_bug, na.rm = TRUE),
+                       synd_res_level_high = sum(level_res_bug_high, na.rm = TRUE),
+                       synd_res_level_med = sum(level_res_bug_med, na.rm = TRUE),
+                       missing = sum(is.na(res_prop)*value)) %>%
+      mutate(use = ifelse(synd_res_level < input$res_cut,1,0)) %>% #))
+      mutate(line_lev = sub("\\..*", "", line),
+             combination2 = sub("*..", "", line)) %>%
+      group_by(line_lev) %>%
+      mutate(use_comb = if_else(any(use == 0),"Not recommended","Can use: resistance less than cutoff")) %>%
+      pivot_wider(names_from = combination2, values_from = drug) %>%
+      group_by(line_lev) %>%
+      dplyr::rowwise() %>%
+      mutate(`2` = ifelse("2" %in% names(.),`2`, NA)) %>% # Add in column if no dual therapies
+      mutate(`3` = ifelse("3" %in% names(.),`3`, NA)) %>% # Add in column if no triple therapies
+      mutate(antibiotic = ifelse(!is.na(`1`),`1`,NA)) %>%
+      left_join(cost) %>%
+      select(-c("antibiotic","Sheet")) %>%
+      dplyr::rename(cost1 = cost) %>%
+      mutate(antibiotic = ifelse(!is.na(`2`),`2`,NA)) %>%
+      left_join(cost) %>%
+      select(-c("antibiotic","Sheet")) %>%
+      dplyr::rename(cost2 = cost) %>%
+      mutate(antibiotic = ifelse(!is.na(`3`),`3`,NA)) %>%
+      left_join(cost) %>%
+      select(-c("antibiotic","Sheet")) %>%
+      dplyr::rename(cost3 = cost) %>%
+      ungroup() %>%
+      mutate(synd_1 = ifelse(!is.na(`1`),synd_res_level,NA),
+             synd_2 = ifelse(!is.na(`2`),synd_res_level,NA),
+             synd_3 = ifelse(!is.na(`3`),synd_res_level,NA),
+             synd_1_high = ifelse(!is.na(`1`),synd_res_level_high,NA), 
+             synd_2_high = ifelse(!is.na(`2`),synd_res_level_high,NA),
+             synd_3_high = ifelse(!is.na(`3`),synd_res_level_high,NA),
+             synd_1_med = ifelse(!is.na(`1`),synd_res_level_med,NA), 
+             synd_2_med = ifelse(!is.na(`2`),synd_res_level_med,NA),
+             synd_3_med = ifelse(!is.na(`3`),synd_res_level_med,NA)) %>%
+      dplyr::rowwise() %>%
+      mutate(miss_1 = ifelse(!is.na(synd_1),missing,NA),miss_2 = ifelse(!is.na(synd_2),missing,NA),miss_3 = ifelse(!is.na(synd_3),missing,NA)) %>%
+      dplyr::group_by(line_lev) %>%
+      dplyr::summarize(across(everything(), ~ first(na.omit(.)))) %>%
+      dplyr::rowwise() %>%
+      mutate(total_cost = sum(cost1, cost2, cost3, na.rm = TRUE)) %>%
+      dplyr::select(where(not_all_na))
+    
+    
+    #table_output
+    
+    if("3" %in% colnames(table_output)){
+      table_output_sh <- table_output %>%
+        mutate(limits1 = ifelse(!is.na(synd_1_med),paste0("(",round(synd_1_med,2),",", round(synd_1_high,2),")"),NA),
+               limits2 = ifelse(!is.na(synd_2_med),paste0("(",round(synd_2_med,2),",", round(synd_2_high,2),")"),NA),
+               limits3 = ifelse(!is.na(synd_3_med),paste0("(",round(synd_3_med,2),",", round(synd_3_high,2),")"),NA)) %>%
+        select(c("line_lev","1","2","3","use_comb","total_cost","synd_1","synd_2","synd_3","miss_1", "miss_2","miss_3","limits1", "limits2", "limits3"))
+      colnames(table_output_sh) <- c("Therapy line","Drug (1st)","Drug (2nd)","Drug (3rd)","Recommendation","Total cost","SRL 1st","SRL 2nd","SRL 3rd",
+                                     "Miss 1st (%)","Miss 2nd (%)","Miss 3rd (%)",
+                                     "(Med, High SRL 1st)","(Med, High SRL 2nd)","(Med, High SRL 3rd)")}
+    
+    if(!"3" %in% colnames(table_output)){
+      if("2" %in% colnames(table_output)){table_output_sh <- table_output %>%
+        mutate(limits1 = ifelse(!is.na(synd_1_med),paste0("(",round(synd_1_med,2),",", round(synd_1_high,2),")"),NA),
+               limits2 = ifelse(!is.na(synd_2_med),paste0("(",round(synd_2_med,2),",", round(synd_2_high,2),")"),NA)) %>%
+        select(c("line_lev","1","2","use_comb","total_cost","synd_1","synd_2","miss_1","miss_2","limits1","limits2"))
+      colnames(table_output_sh) <- c("Therapy line","Drug (1st)","Drug (2nd)","Recommendation","Total cost","SRL 1st","SRL 2nd",
+                                     "Miss 1st (%)","Miss 2nd (%)",
+                                     "(Med, High SRL 1st)","(Med, High SRL 2nd)")}else{
+                                       table_output_sh <- table_output %>%
+                                         mutate(limits1 = ifelse(!is.na(synd_1_med),paste0("(",round(synd_1_med,2),",", round(synd_1_high,2),")"),NA)) %>%
+                                         select(c("line_lev","1","use_comb","total_cost","synd_1","miss_1", "limits1"))
+                                       colnames(table_output_sh) <- c("Therapy line","Drug (1st)","Recommendation","Total cost","SRL 1st",
+                                                                      "Miss 1st (%)","(Med, High SRL 1st)")
+                                     }
     }
+    
+    
+    table_output_sh
+    #res_levels  %>% filter(Sheet == input$variable)
+    
   })
   
-  ### MAP OF PREVALENCE of resistance to second line drug in first line therapy
-  output$coolplot2 <- renderPlot({
+  ### ****************************************************************************************************************************************###
+  # OUTPUT$sample_prop - How many to not sample to be under the threshold? 
+  ### ****************************************************************************************************************************************###
+  
+  output$sample_prop <-  renderTable({
     
-    if(model()$d12 != ""){
-      # Data
-      mapped_data <- model()$mapped_data_d12
-      if(length(input$checkGroup) == 1 && input$checkGroup == "ECDC"){mapped_data <- model()$europe_map_12}
-      
-      if(model()$p2 == 1){
-        cols <- rev(colorRampPalette(brewer.pal(11,"Spectral"), bias = 2)(13))
+    # input syndrome
+    synd <- input$variable
+    pvars <- as.character(sp_all[,1]) #as.character(unique(datam_map$Species)) # all species in data used 
+    
+    if(input$checkbox){sp_bkdwn <- sp_bkdwn_zambia}else{sp_bkdwn <- sp_bkdwn_lit} # use literature or Zambian?
+    # if(!is.null(data_bacteria)){sp_bkdwn <- data_bacteria} # overwrite above 
+    
+    sp_b <- melt(sp_bkdwn[which(sp_bkdwn[,1] == synd),],id.vars = "syndrome")
+    sp_b$variable <- gsub(".", ' ', sp_b$variable, fixed = T)
+    ## Need "Streptococcus, viridans group"
+    g <- grep("viri",sp_b$variable)
+    sp_b[g,"variable"] <- "Streptococcus, viridans group"
+    
+    values_slid <- filter(sp_b, variable %in% pvars)
+    
+    pvars_use <- pvars
+    names <- c()
+    for(i in 1:length(pvars_use)){names <- c(names,paste0("range", i))}
+    
+    values <- c()
+    for(i in 1:length(pvars_use)){values <- c(values,input[[names[i]]])}
+    
+    # bar_plot data
+    bar_plot_data <- as.data.frame(cbind(rep(1, length(values)),values))
+    colnames(bar_plot_data) <- c("x","value")
+    bar_plot_data$Bacteria <- values_slid$variable
+    
+    res_levels <- data_res() 
+    cost <- data_cost() 
+    
+    #res_levels
+    
+    ## What were the inputted therapy drugs?
+    therapy_choices <- as.data.frame(cbind(c(1.1, 1.2, 1.3, 2.1, 2.2, 2.3, 3.1, 3.2, 3.3, 4.1, 4.2, 4.3),
+                                           c(input$drug1.1,
+                                             input$drug1.2,
+                                             input$drug1.3,
+                                             input$drug2.1,
+                                             input$drug2.2,
+                                             input$drug2.3,
+                                             input$drug3.1,
+                                             input$drug3.2,
+                                             input$drug3.3,
+                                             input$drug4.1,
+                                             input$drug4.2,
+                                             input$drug4.3))) %>%
+      set_colnames(c("line","drug")) %>%
+      filter(drug != "blank")
+    
+    # therapy_choices <- as.data.frame(cbind(
+    #   c(1.1, 1.2, 1.3, 2.1, 2.2, 2.3, 3.1, 3.2, 3.3, 4.1,4.2, 4.3),
+    #   c("Ampicillin","blank", "blank","Cefazolin","blank","blank","Cefotaxime","blank","blank","Cephalothin","blank","blank"))) %>%
+    #   set_colnames(c("line","drug")) %>%
+    #   filter(drug != "blank")
+    
+    ### Add in upper and medium resistance levels if data missing 
+    res_levels <- res_levels %>% mutate(res_prop_high = res_prop,res_prop_med = res_prop)
+    res_levels[is.na(res_levels$res_prop_high),"res_prop_high"] <- 1
+    res_levels[is.na(res_levels$res_prop_med),"res_prop_med"] <- 0.5
+    
+    table_output <- res_levels %>% filter(Sheet == input$variable) %>%
+      right_join(therapy_choices) %>%
+      left_join(bar_plot_data) %>%
+      mutate(level_res_bug = res_prop * value, level_res_bug_high = res_prop_high * value,level_res_bug_med = res_prop_med * value) %>% 
+      group_by(drug, line) %>%
+      dplyr::summarise(synd_res_level = sum(level_res_bug, na.rm = TRUE),
+                       synd_res_level_high = sum(level_res_bug_high, na.rm = TRUE),
+                       synd_res_level_med = sum(level_res_bug_med, na.rm = TRUE),
+                       missing = sum(is.na(res_prop)*value)) %>%
+      mutate(use = ifelse(synd_res_level < input$res_cut,1,0)) %>% #))
+      mutate(line_lev = sub("\\..*", "", line),
+             combination2 = sub("*..", "", line)) %>%
+      group_by(line_lev) %>%
+      mutate(use_comb = if_else(any(use == 0),"Not recommended","Can use: resistance less than cutoff")) %>%
+      pivot_wider(names_from = combination2, values_from = drug) %>%
+      group_by(line_lev) %>%
+      dplyr::rowwise() %>%
+      mutate(`2` = ifelse("2" %in% names(.),`2`, NA)) %>% # Add in column if no dual therapies
+      mutate(`3` = ifelse("3" %in% names(.),`3`, NA)) %>% # Add in column if no triple therapies
+      mutate(antibiotic = ifelse(!is.na(`1`),`1`,NA)) %>%
+      left_join(cost) %>%
+      select(-c("antibiotic","Sheet")) %>%
+      dplyr::rename(cost1 = cost) %>%
+      mutate(antibiotic = ifelse(!is.na(`2`),`2`,NA)) %>%
+      left_join(cost) %>%
+      select(-c("antibiotic","Sheet")) %>%
+      dplyr::rename(cost2 = cost) %>%
+      mutate(antibiotic = ifelse(!is.na(`3`),`3`,NA)) %>%
+      left_join(cost) %>%
+      select(-c("antibiotic","Sheet")) %>%
+      dplyr::rename(cost3 = cost) %>%
+      ungroup() %>%
+      mutate(synd_1 = ifelse(!is.na(`1`),synd_res_level,NA),
+             synd_2 = ifelse(!is.na(`2`),synd_res_level,NA),
+             synd_3 = ifelse(!is.na(`3`),synd_res_level,NA),
+             synd_1_high = ifelse(!is.na(`1`),synd_res_level_high,NA), 
+             synd_2_high = ifelse(!is.na(`2`),synd_res_level_high,NA),
+             synd_3_high = ifelse(!is.na(`3`),synd_res_level_high,NA),
+             synd_1_med = ifelse(!is.na(`1`),synd_res_level_med,NA), 
+             synd_2_med = ifelse(!is.na(`2`),synd_res_level_med,NA),
+             synd_3_med = ifelse(!is.na(`3`),synd_res_level_med,NA)) %>%
+      dplyr::rowwise() %>%
+      mutate(miss_1 = ifelse(!is.na(synd_1),missing,NA),miss_2 = ifelse(!is.na(synd_2),missing,NA),miss_3 = ifelse(!is.na(synd_3),missing,NA)) %>%
+      dplyr::group_by(line_lev) %>%
+      dplyr::summarize(across(everything(), ~ first(na.omit(.)))) %>%
+      dplyr::rowwise() %>%
+      mutate(total_cost = sum(cost1, cost2, cost3, na.rm = TRUE)) %>%
+      dplyr::select(where(not_all_na))
+    
+    if("3" %in% colnames(table_output)){
+      prop_table <- table_output %>% select(`1`, `2`, `3`, synd_1, synd_2, synd_3)  %>% 
+        mutate(max_for_regimen = pmax(synd_1, synd_2, synd_3, na.rm=TRUE)) %>%
+        mutate(prop_sample = ifelse(max_for_regimen > input$res_cut, 100 * input$res_cut / max_for_regimen, NA)) %>% # less than this
+        select(`1` ,`2` ,`3`, max_for_regimen, prop_sample)
+      colnames(prop_table) <- c("Drug (1st)", "Drug (2nd)", "Drug (3rd)","Max SRL for regimen","Threshold for sampling (%)")}
+    
+    
+    if(!"3" %in% colnames(table_output)){
+      if("2" %in% colnames(table_output)){
+        prop_table <- table_output %>% select(`1`, `2`, synd_1, synd_2) %>% 
+          mutate(max_for_regimen = pmax(synd_1, synd_2, na.rm=TRUE)) %>%
+          mutate(prop_sample = ifelse(max_for_regimen > input$res_cut, 100 * input$res_cut / max_for_regimen, NA)) %>% # less than this
+          select(`1` ,`2` , max_for_regimen, prop_sample)
         
-        titlet <- paste0("Percentage of syndrome isolates that are
-                      \nresistant to the second drug in the first line empirical therapy: ",model()$d12)
-        
-        ### Map resistance proportion in this syndrome
-        mapParams <- mapCountryData(mapped_data, nameColumnToPlot = "res_perc", 
-                                    catMethod = seq(0,100,5),
-                                    colourPalette = cols, 
-                                    addLegend = FALSE, 
-                                    mapTitle = titlet,
-                                    missingCountryCol = gray(.8),
-                                    nameColumnToHatch = "n10")
-        do.call( addMapLegend, c( mapParams
-                                  , legendLabels="all"
-                                  , legendWidth=0.5))
-        
-      } 
+        colnames(prop_table) <- c("Drug (1st)", "Drug (2nd)",  "Max SRL for regimen","Threshold for sampling (%)")}else{
+          prop_table <- table_output %>% select(`1`, synd_1) %>% 
+            mutate(max_for_regimen = synd_1) %>%
+            mutate(prop_sample = ifelse(max_for_regimen > input$res_cut, 100 * input$res_cut / max_for_regimen, NA)) %>% # less than this
+            select(`1`, max_for_regimen, prop_sample)
+          
+          colnames(prop_table) <- c("Drug (1st)", "Max SRL for regimen","Threshold for sampling (%)")
+        }
     }
+    
+    
+    
+    
+    prop_table
+    
     
   })
   
   
   ### ****************************************************************************************************************************************###
-  # OUTPUT$TRAFFICPLOT - Functions for creating MAP OF WHERE RESISTANCE TO EACH THERAPY above the cutoff 
+  # OUTPUT$DATAPLOT - Maps resistance levels
   ### ****************************************************************************************************************************************###
   
-  output$trafficplot <- renderPlot({
+  output$dataplot <- renderPlot({
     
-    datam_map_new <- treat()$data_treat
+    theme_set(theme_bw(base_size = 11))
+    # 
+    # data_res() %>% filter(!is.na(res_prop), Sheet == input$variable) %>% ungroup() %>% 
+    #   ggplot() +
+    #   geom_bar(aes(x=reorder_within(drug, res_prop, Bacteria), y = res_prop, fill = drug),stat = "identity") + 
+    #   facet_wrap(~Bacteria,scales="free_x") + 
+    #   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), axis.text = element_text(size = 3)) + 
+    #   scale_y_continuous("Resistance proportion") 
     
-    if(model()$p3 == 1 & dim(datam_map_new)[1]>0){
-      
-      cols <- c("green","yellow","orange","red")
-      
-      ### Map resistance proportion in this syndrome
-      # round recc for map
-      datam_map_new$recc <- round(datam_map_new$recc,0)
-      datam_map_new <- as.data.frame(datam_map_new)
-      
-      mapped_data <- joinCountryData2Map(datam_map_new, joinCode = "NAME", nameJoinColumn = "Country")
-      mapped_data <- subset(mapped_data, continent != "Antarctica")
-      if(length(input$checkGroup) == 1 && input$checkGroup == "ECDC"){mapped_data <- subset(mapped_data, NAME%in%ecdc_countries)}
-      
-      t1 <- model()$d11
-      if(model()$d12 != ""){t1 <- paste0(model()$d11,"&",model()$d12)}
-      t2 <- model()$d21
-      if(model()$d22 != ""){t2 <- paste0(model()$d21,"&",model()$d22)}
-      t3 <- model()$d3
-      
-      mapParams <- mapCountryData(mapped_data, nameColumnToPlot = "recc", 
-                                  catMethod = seq(0,4,1),
-                                  colourPalette = cols, 
-                                  addLegend = 'FALSE', 
-                                  mapTitle = ifelse(length(model()$d3)>0, 
-                                                    paste0("Can first (", t1,", green), second (", t2,", yellow) or\n third line therapy (", t3,", orange) be used?\nOr is resistance to all recommended therapies seen (red)?"),
-                                                    paste0("Can first (", t1,", green), second (", t2,", yellow)\nOr is resistance to all recommended therapies seen (red)?")),
-                                  missingCountryCol = gray(.8))
-      
-      #mapParams$legendText <- c('first','second','third','none')
-      
-      do.call( addMapLegend, c(mapParams)) #, list(legendText=c('all','first','second','third','none'))))#legendLabels="all")) #, x='bottom',title="Region",horiz=TRUE))
-    }
+    data_res() %>% filter(!is.na(res_prop), res_prop > 0.01, Sheet == input$variable) %>% ungroup() %>% 
+      ggplot() +
+      geom_bar(aes(x=reorder_within(drug, res_prop, Bacteria), y = res_prop, fill = drug),stat = "identity") + 
+      facet_wrap(~Bacteria,scales="free_x") + 
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), axis.text = element_text(size = 5)) + 
+      scale_y_continuous("Resistance proportion") + 
+      scale_x_reordered("Antibiotic") + 
+      scale_fill_discrete("Antibiotic")
     
-  })
+  }, height = 3000, width = 1500)
   
-  ### ****************************************************************************************************************************************###
-  # OUTPUT$EMPIRICTHERAPY - Table in first input of our baseline therapy
-  ### ****************************************************************************************************************************************###
-  
-  ## FUTURE area to update: allow users to change this and input their own drug choices (limit to certain set for each therapy? setting? patient group?)
-  output$empirictherapy <- renderTable({
+  output$dataplot2 <- renderPlot({
     
-    synd = input$variable
+    ggplot(data_res(), aes(x = Bacteria, y = drug, fill = res_prop)) + geom_tile() +
+      scale_fill_gradient("Proportion resistant", low="blue", high="red", limits = c(0,1)) + 
+      facet_wrap(~Syndrome) + 
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+      scale_y_discrete("Antibiotic")
     
-    # If not ATLAS then have to use grouped drugs
-    if(length(input$checkGroup) > 1 || input$checkGroup != "ATLAS"){
-      drg_bkdwn <- drg_bkdwn_group
-    }
-    
-    # What is the empiric therapy for this syndrome? 
-    emp_data <- drg_bkdwn[which(drg_bkdwn$syndrome == synd),]
-    
-    emp_data <- emp_data[,colSums(is.na(emp_data))<nrow(emp_data)]
-    
-    emp_data[,-1] 
-    
-  })
-  
-  ### ****************************************************************************************************************************************###
-  # OUTPUT$ECON - Table in first input of economic availability and usage of drugs
-  ### ****************************************************************************************************************************************###
-  
-  output$econ <- renderDataTable({
-    
-    # Data - as in empiric therapy table
-    synd = input$variable
-    
-    # If not ATLAS then have to use grouped drugs
-    if(length(input$checkGroup) > 1 || input$checkGroup != "ATLAS"){
-      drg_bkdwn <- drg_bkdwn_group
-    }
-    
-    emp_data <- drg_bkdwn[which(drg_bkdwn$syndrome == synd),]
-    emp_data <- emp_data[,colSums(is.na(emp_data))<nrow(emp_data)]
-    
-    # Grab from econ data
-    which_drugs <- unique(unlist(emp_data[,-c(1,2)]))
-    # If not ATLAS then have to use grouped 
-    if(length(input$checkGroup) > 1 || input$checkGroup != "ATLAS"){
-      econ_drugs <- filter(econ, group %in% which_drugs)
-      colnames(econ_drugs)[colnames(econ_drugs) == "group"] <- "Antibiotic"
-    }else{ 
-      econ_drugs <- filter(econ, Antibiotic.AR.IA %in% which_drugs)
-      colnames(econ_drugs)[colnames(econ_drugs) == "Antibiotic.AR.IA"] <- "Antibiotic"
-    }
-    
-    colnames(econ_drugs)[colnames(econ_drugs) == "WHO.Access"] <- "WHO EML"
-    colnames(econ_drugs)[colnames(econ_drugs) == "AWaRe"] <- "WHO AWaRe"
-    
-    econ_drugs <- econ_drugs[,c("Antibiotic","Cost","Formulation","WHO EML", "WHO AWaRe")]
-    ee <- datatable(econ_drugs) %>% formatStyle(
-      'WHO EML',
-      backgroundColor = styleEqual(c("Essential Medicine - Core List","Not on the list","Essential Medicine in different dosage/strength","Essential Medicine - Complementary List",
-                                     "Potential alternative to an Essential Medicine"), c('red', 'green','orange','orange','green'))
-    ) %>% formatStyle(
-      'WHO AWaRe',
-      backgroundColor = styleEqual(c("Watch","Reserve","Access"), c('orange','red','green'))
-    )
-    
-    ee
-  })
-  
-  
-  ### ****************************************************************************************************************************************###
-  # OUTPUT$RESULTS - Table of underlying data
-  ### ****************************************************************************************************************************************###
-  
-  output$results <- renderDataTable({
-    
-    synd = input$variable
-    datam_map <- model()$datam_map
-    datam_map <- datam_map[which(datam_map$syndrome == synd),]
-    
-    if(length(input$checkGroup) == 1 && input$checkGroup == "ECDC"){
-      datam_map <- subset(datam_map, Country%in%ecdc_countries)}
-    
-    age <- input$age
-    
-    # If not ATLAS then have to use grouped drugs
-    if(length(input$checkGroup) > 1 || input$checkGroup != "ATLAS"){
-      drg_bkdwn <- drg_bkdwn_group
-    }
-    
-    # first line drug for this synd
-    # Drugs for this synd
-    d11 <- as.character(drg_bkdwn[intersect(which(drg_bkdwn$syndrome == synd),which(drg_bkdwn$Age == age)),"First.line.1st.drug"])
-    d12 <- as.character(drg_bkdwn[intersect(which(drg_bkdwn$syndrome == synd),which(drg_bkdwn$Age == age)),"First.line.2nd.drug"])
-    w1 <- c(which(datam_map$variable == d11),which(datam_map$variable == d12))
-    
-    d21 <- as.character(drg_bkdwn[intersect(which(drg_bkdwn$syndrome == synd),which(drg_bkdwn$Age == age)),"Second.line.1st.drug"])
-    d22 <- as.character(drg_bkdwn[intersect(which(drg_bkdwn$syndrome == synd),which(drg_bkdwn$Age == age)),"Second.line.2nd.drug"])
-    w2 <- c(which(datam_map$variable == d21),which(datam_map$variable == d22))
-    
-    d3 <- as.character(drg_bkdwn[intersect(which(drg_bkdwn$syndrome == synd),which(drg_bkdwn$Age == age)),"Third.line.1st.drug"])
-    w3 <- which(datam_map$variable == d3)
-    
-    datam_map$Therapy <- ""
-    datam_map[w1,"Therapy"] <- "First"
-    datam_map[w2,"Therapy"] <- "Second"
-    datam_map[w3,"Therapy"] <- "Third"
-    if(length(intersect(w1,w2))>1){datam_map[intersect(w1,w2),"Therapy"] <- "First/Second"}
-    if(length(intersect(w2,w3))>1){datam_map[intersect(w2,w3),"Therapy"] <- "Second/Third"}
-    if(length(intersect(w1,w3))>1){datam_map[intersect(w1,w3),"Therapy"] <- "First/Third"}
-    
-    datam_map <- datam_map[c(w1,w2,w3),]
-    
-    datam_map$Antibiotic <- datam_map$variable
-    datam_map$"Resistance prevalence (percentage)" <- round(100*datam_map$rate_r,2)
-    dd <- datam_map[,c("Country","Species","Therapy","Antibiotic","n","Resistance prevalence (percentage)")]
-    dd <- dd[order(dd$Country),]
-    dd[,c("Country","Species","Therapy","Antibiotic","n","Resistance prevalence (percentage)")]
-    
-  }
-  )
+  }, height = 1000, width = 1500)
   
   ### ****************************************************************************************************************************************###
   # OUTPUT$RECC - Recommendations table 
@@ -1006,7 +998,7 @@ server <- function(input, output) {
       
       drec2[,c("Country",t1,t2,
                paste0("Third line: ",model()$d3),"Recommendation","Number of isolates","Mean syndrome coverage")]
-
+      
       
     }
   },
