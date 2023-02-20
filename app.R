@@ -26,6 +26,10 @@ sp_bkdwn_lit <- read_csv("sp_bkdwn.csv") # baseline contributing bacteria distri
 sp_bkdwn_zambia <- read_csv("sp_bkdwn_zambia.csv") # baseline contributing bacteria distributions from Zambia
 sp_all <- read.csv("sp_all.csv", fileEncoding="UTF-8-BOM") # has just the list of species to include
 
+# Zambian res and cost levels
+res_levels_Zambia<-read_excel_allsheets("input_resistance_2207.xlsx")
+cost_levels_Zambia<-read_excel_allsheets("antibiotics_cost.xlsx")
+
 # Function to keep NAs if all NA
 suma = function(x) if (all(is.na(x))) x[NA_integer_] else max(x, na.rm = TRUE)
 
@@ -67,12 +71,13 @@ ui <- fluidPage(
                            c("Sepsis" = "sep",
                              "Complicated UTI" = "c.uti",
                              "Hospital acquired pneumonia" = "hap",
-                             "Community acquired pneumonia" = "cap",
-                             "Cellulitis / skin abcess" = "skin",
+                             #"Community acquired pneumonia" = "cap",
+                             "Cellulitis / skin abcess" = "skin"#,
                              #"Purulent urthritis / cervicitis" = "puc",
-                             "Upper respiratory tract infection" = "urti",
-                             "Bacterial meningitis" = "meng",
-                             "Septic arthritis" = "sepa")),
+                             #"Upper respiratory tract infection" = "urti",
+                             # "Bacterial meningitis" = "meng",
+                             #"Septic arthritis" = "sepa"
+                           )),
                
                # # Age input
                # selectInput("age", "Age", 
@@ -97,12 +102,16 @@ ui <- fluidPage(
                          #            ".csv")
                ),
                
+               # Copy the line below to make a checkbox
+               checkboxInput("checkbox_file_res", label = "Or use Zambian data", value = FALSE),
+               
                fileInput("file_cost", "Cost distribution: Choose XLS File",
                          multiple = FALSE
                          # accept = c("text/csv",
                          #            "text/comma-separated-values,text/plain",
                          #            ".csv")
                ),
+               checkboxInput("checkbox_file_cost", label = "Or use Zambian costs", value = FALSE),
                
                hr(), 
                
@@ -190,38 +199,110 @@ ui <- fluidPage(
     # Output: Tabset w/ plot, summary, and table
     tabsetPanel(type = "tabs", 
                 
-                # First tab: bacterial distribution 
-                tabPanel("Input: Contributing pathogen distribution", 
-                         textOutput("sliders_total"),
-                         verbatimTextOutput("text_warning_glas"), # warnings if use data other than ATLAS - FUTURE area to update: e.g. grey out syndromes in input potential
-                         verbatimTextOutput("text_warning_resm"),
-                         verbatimTextOutput("text_warning_ecdc"),
-                         h2("\n"),
-                         uiOutput("sliders"),
-                         h6("Proportions must sum to 100")
+                # Opening tab: Explainer
+                tabPanel("Home page", 
+                         h4("Empiric prescribing recommendation support"), 
+                         p("This online dashboard aims to support decision 
+                            making around empiric prescribing. It should not be used without clinical and
+                           pharmacist training and support"),
+                         p("This framework is designed to support first analysis of resistance data to 
+                           act as a starting point for empiric prescribing tailored to local resistance
+                           patterns at the level of infection syndromes. This app creates a weighted 
+                  average resistance level at the syndrome level combining the bacterial aetiology with 
+                  the proportion of each bacteria that are resistant to each antibiotic."),
+                  p("For more information about the original concept please see our",
+                    a("publication.", 
+                      href = "https://wellcomeopenresearch.org/articles/4-140")),
+                p("This version was designed and piloted with collaborators in Zambia. As such we have 
+                collected local aetiology, resistance and costs data that users can use to explore
+                the framework or users have the option to upload their own data. For more information on the 
+                Zambian setting and the aims of this version of the app, please check out our preprint ",
+                  a("here.", 
+                    href = "https://wellcomeopenresearch.org/articles/4-140")),
+                
+                br(),
+                h5("User instructions"),
+                p("To use this dashboard, firstly work through the Inputs in the side panel"),
+                p("(1) Choose the infection syndrome you wish to focus on."),
+                p("(2) Choose the resistance cutoff (as a percentage) that would result in a change
+                           away from this antibiotic to another"),
+                p("(3) Resistance distribution: Users can choose to upload information from their local 
+                           setting on the proportion of bacteria isolated from patients with set infection
+                           syndromes that are resistant to antibiotics or users can use the data from our Zambian pilot.
+                           For a blank template xls file use this ",
+                  a("link.", 
+                    href = "http://shiny.rstudio.com")),
+                p("(4) Cost distribution: Users can choose to upload information from their local 
+                           setting on the costs of antibiotics in their setting or users can use the data from our Zambian pilot
+                           For a blank template xls file use this ",
+                  a("link.", 
+                    href = "http://shiny.rstudio.com")),
+                p("(5) Therapy options: Users can choose up to four antibiotic therapy options consisting
+                  of up to three separate antibiotics. Please use the dropdown menus to create the therapies
+                  for consideration as empiric therapy options. Without these choices the app will not run."),
+                p("(6) Bacterial distribution inputs: the aetiology of the infection syndrome is closely 
+                  linked to the syndrome level resistance. There is great uncertainty and likely much
+                  local variation in these levels. Current distributions are based on rapid literature reviews
+                  and can be adjusted manually in the tab",em("Contributing pathogen distribution"),
+                  "or users can tick the checkbox and use the data collected in our Zambian pilot."),
+                p("(7) Once the above are inputted, users must click on the Input tab",em("Contributing pathogen distribution"),
+                  "to check distributions before the application will run."),
+                h5("Outputs"),
+                p("Outputs are given terms of plots of the resistance data across each bacteria",em("Output: Data Visulation"),
+                  "and weighted average resistance analyses in", em("Output: Table of recommendations")),
                 ),
-                
-                # Second tab: Underlying data table
-                tabPanel("Output: Data Visualisation", 
-                         plotOutput("dataplot")),
-                
-                # Third tab: outputs
-                tabPanel("Output: Table of recommendations.",
-                         tableOutput("recctable"), 
-                         h6("*SRL = Syndrome resistance level to this antibiotic (%)"),
-                         h6("Note a therapy is not recommended if the SRL for any antibiotic is over the inputted threshold."),
-                         h6("*Miss 1st/2nd/3rd (%) = Percentage of the bacteria causing this syndrome for which there is no resistance data for this antibiotic (1st / 2nd / 3rd drug in combination where relevant)."),
-                         h6("*(Med, High SRL 1st/2nd/3rd) assumes 50% or 100% resistance, respectively, in the missing bacteria, instead of 0% resistance as assumed in the main SRL."),
-                         tableOutput("sample_prop"),
-                         h6("The threshold for sampling is the maximum percentage of this syndrome that is sampled in this dataset in order to push the overall resistance below the inputted resistance threshold assuming all other bacteria causing this syndrome 
+    
+    
+    # First tab: bacterial distribution 
+    tabPanel("Input: Contributing pathogen distribution", 
+             textOutput("sliders_total"),
+             verbatimTextOutput("text_warning_glas"), # warnings if use data other than ATLAS - FUTURE area to update: e.g. grey out syndromes in input potential
+             verbatimTextOutput("text_warning_resm"),
+             verbatimTextOutput("text_warning_ecdc"),
+             h2("\n"),
+             uiOutput("sliders"),
+             h6("Proportions must sum to 100")
+    ),
+    
+    # Second tab: Underlying data table
+    tabPanel("Output: Data Visualisation", 
+             plotOutput("dataplot")),
+    
+    # Third tab: outputs
+    tabPanel("Output: Table of recommendations.",
+             h4("Summary table"),
+             tableOutput("recctable"), 
+             h6("*SRL = Syndrome resistance level to this antibiotic (%)"),
+             h6("Note a therapy is not recommended if the SRL for any antibiotic is over the inputted threshold."),
+             h6("*Miss 1st/2nd/3rd (%) = Percentage of the bacteria causing this syndrome for which there is no resistance data for this antibiotic (1st / 2nd / 3rd drug in combination where relevant)."),
+             h6("*(Med, High SRL 1st/2nd/3rd) assumes 50% or 100% resistance, respectively, in the missing bacteria, instead of 0% resistance as assumed in the main SRL."),
+             p("Note this recommendation should be interpreted with caution and used only on the advice of clinical support with the full awareness of the limitations of the 
+                inputted data. For example consideration should be taken of"),
+             p("(a) the amount of missing resistance data (shown by the Miss columns in the above table). It may be that a certain bacteria is believed to cause
+             a proportion of the syndrome but there is no data on the level of resistance to antibiotics within the therapy"),
+             p("(b) the aetiology of the syndrome may be unknown or uncertain in this setting - small changes in the proportion of bacteria causing a syndrome would have knock-on effects on the 
+               proportion resistant and hence the recommendation for therapy."),
+             p("(c) the method used: a sensitivity analysis is shown in the med,high SRL columns above which takes into account the assumption made about the sensitivity of the bacteria with missing 
+               data to antibiotics within the therapy - baseline assumptions take them to be totally susceptible."), 
+             p("(d) the coverage of sampling: the analysis below explores the threshold for sampling to attempt to explore the impact of bias towards sampling patients for whom
+               local empiric therapy is failing and hence the bias towards more samples that are resistant being in the data."),
+             p("For further limitations and discussion please check our",
+               a("publication.", 
+                      href = "https://wellcomeopenresearch.org/articles/4-140")), p("and",
+                a("preprint.", 
+                      href = "https://wellcomeopenresearch.org/articles/4-140")),
+             br(), 
+             h4("Threshold for sampling"),
+             tableOutput("sample_prop"),
+             p("The threshold for sampling is the maximum percentage of this syndrome that is sampled in this dataset in order to push the overall resistance below the inputted resistance threshold assuming all other bacteria causing this syndrome 
                          are totally susceptible. It is NA if the resistance prevalence is already below the threshold."), 
-                         h6("e.g. if resistance = 50% in the proportion sampled and the threshold cutoff is 15%, then to recommend use of this therapy a maximum of 30% of patients with this syndrome should be sampled and in the data. The other 70% of patients with this syndrome need to “not be in the data and have a syndrome caused by a bacteria that is totally susceptible” for resistance to be below the inputted threshold.")
-                )
-                
-                
-                
+             p("e.g. if resistance = 50% in the proportion sampled and the threshold cutoff is 15%, then to recommend use of this therapy a maximum of 30% of patients with this syndrome should be sampled and in the data. The other 70% of patients with this syndrome need to “not be in the data and have a syndrome caused by a bacteria that is totally susceptible” for resistance to be below the inputted cutoff threshold for changing antibiotic.")
     )
+    
+    
+    
   )
+)
 )
 
 ###********************************************************************************************************************************************************************#####
@@ -236,7 +317,7 @@ server <- function(input, output) {
   
   # Reactive dependencies - if these change then MODEL will run again and update values
   xxchange <- reactive({
-    paste(input$variable, input$age, input$checkGroup, input$checkbox, 
+    paste(input$variable, input$age, input$checkGroup, input$checkbox, input$checkbox_file_cost, input$checkbox_file_res, 
           input$range1, input$range2, input$range3, input$range4, 
           input$range5, input$range6, input$range7, input$range8,
           input$range9, input$range10, input$range11, input$range12,
@@ -248,9 +329,10 @@ server <- function(input, output) {
   
   ## Input data
   data_res <- reactive({
-    inFile <- input$file_res
-    if (is.null(inFile)) { return(NULL) }    
-    res_levels <- read_excel_allsheets(inFile$datapath)
+    if(!input$checkbox_file_res){inFile <- input$file_res
+    if(is.null(inFile)) { return(NULL) }    
+    res_levels <- read_excel_allsheets(inFile$datapath)}else{
+      res_levels <- res_levels_Zambia}
     res_levels <- res_levels %>% pivot_longer(cols = colnames(res_levels)[4]:last(colnames(res_levels)), values_to = "res_prop") %>% dplyr::rename(drug = name)
     #res_levels[is.na(res_levels$res_prop),"res_prop"] <- 0 # Set to 0 if not data: TO CHECK IF KEEP as assumes no data = no resistance
     return(res_levels)
@@ -258,9 +340,10 @@ server <- function(input, output) {
   
   
   data_cost <- reactive({
-    inFile <- input$file_cost
+    if(!input$checkbox_file_cost){inFile <- input$file_cost
     if (is.null(inFile)) { return(NULL) }    
-    dataFile <- read_excel_allsheets(inFile$datapath)
+    dataFile <- read_excel_allsheets(inFile$datapath)}else{
+      dataFile <- cost_levels_Zambia}
     #dataFile<-data.frame(EndoPaste(dataFile)[1],stringsAsFactors=FALSE)
   })
   
