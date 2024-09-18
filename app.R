@@ -27,8 +27,8 @@ sp_bkdwn_zambia <- read_csv("sp_bkdwn_zambia.csv") # baseline contributing bacte
 sp_all <- read.csv("sp_all.csv", fileEncoding="UTF-8-BOM") # has just the list of species to include
 
 # Zambian res and cost levels
-res_levels_Zambia<-read_excel_allsheets("input_resistance_2207.xlsx")
-cost_levels_Zambia<-read_excel_allsheets("antibiotics_cost.xlsx")
+res_levels_Zambia<-read_excel_allsheets("input_resistance_23.xlsx")
+cost_levels_Zambia<-read_excel_allsheets("antibiotics_cost23.xlsx")
 
 # Function to keep NAs if all NA
 suma = function(x) if (all(is.na(x))) x[NA_integer_] else max(x, na.rm = TRUE)
@@ -111,7 +111,7 @@ ui <- fluidPage(
                          #            "text/comma-separated-values,text/plain",
                          #            ".csv")
                ),
-               checkboxInput("checkbox_file_cost", label = "Or use Zambian costs", value = FALSE),
+               checkboxInput("checkbox_file_cost", label = "Or use Zambian cost per dose", value = FALSE),
                
                hr(), 
                
@@ -228,15 +228,15 @@ ui <- fluidPage(
                            away from this antibiotic to another"),
                 p("(3) Resistance distribution: Users can choose to upload information from their local 
                            setting on the proportion of bacteria isolated from patients with set infection
-                           syndromes that are resistant to antibiotics or users can use the data from our Zambian pilot.
-                           For a blank template xls file use this ",
+                           syndromes that are resistant to antibiotics (by entering proportions between 0 and 1 in the template) 
+                  or users can use the data from our Zambian pilot. For a blank template xls file choose download at this ",
                   a("link.", 
-                    href = "http://shiny.rstudio.com")),
+                    href = "https://github.com/gwenknight/zaria/blob/main/resistance_template.xlsx")),
                 p("(4) Cost distribution: Users can choose to upload information from their local 
-                           setting on the costs of antibiotics in their setting or users can use the data from our Zambian pilot
-                           For a blank template xls file use this ",
+                           setting on the costs of antibiotics in their setting (by entering costs in the template) or users can use the from our Zambian pilot. The costs can either be per dose (as in our pilot, in Zambian Kwacha) or per course. 
+                  For a blank template xls file choose download at this ",
                   a("link.", 
-                    href = "http://shiny.rstudio.com")),
+                    href = "https://github.com/gwenknight/zaria/blob/main/cost_template.xlsx")),
                 p("(5) Therapy options: Users can choose up to four antibiotic therapy options consisting
                   of up to three separate antibiotics. Please use the dropdown menus to create the therapies
                   for consideration as empiric therapy options. Without these choices the app will not run."),
@@ -247,6 +247,7 @@ ui <- fluidPage(
                   "or users can tick the checkbox and use the data collected in our Zambian pilot."),
                 p("(7) Once the above are inputted, users must click on the Input tab",em("Contributing pathogen distribution"),
                   "to check distributions before the application will run."),
+                br(),
                 h5("Outputs"),
                 p("Outputs are given terms of plots of the resistance data across each bacteria",em("Output: Data Visulation"),
                   "and weighted average resistance analyses in", em("Output: Table of recommendations")),
@@ -266,7 +267,10 @@ ui <- fluidPage(
     
     # Second tab: Underlying data table
     tabPanel("Output: Data Visualisation", 
-             plotOutput("dataplot")),
+             plotOutput("dataplot"),
+             #h2("\n"),
+             #plotOutput("dataplot3")
+             ),
     
     # Third tab: outputs
     tabPanel("Output: Table of recommendations.",
@@ -276,6 +280,8 @@ ui <- fluidPage(
              h6("Note a therapy is not recommended if the SRL for any antibiotic is over the inputted threshold."),
              h6("*Miss 1st/2nd/3rd (%) = Percentage of the bacteria causing this syndrome for which there is no resistance data for this antibiotic (1st / 2nd / 3rd drug in combination where relevant)."),
              h6("*(Med, High SRL 1st/2nd/3rd) assumes 50% or 100% resistance, respectively, in the missing bacteria, instead of 0% resistance as assumed in the main SRL."),
+             br(),
+             br(),
              p("Note this recommendation should be interpreted with caution and used only on the advice of clinical support with the full awareness of the limitations of the 
                 inputted data. For example consideration should be taken of"),
              p("(a) the amount of missing resistance data (shown by the Miss columns in the above table). It may be that a certain bacteria is believed to cause
@@ -287,9 +293,8 @@ ui <- fluidPage(
              p("(d) the coverage of sampling: the analysis below explores the threshold for sampling to attempt to explore the impact of bias towards sampling patients for whom
                local empiric therapy is failing and hence the bias towards more samples that are resistant being in the data."),
              p("For further limitations and discussion please check our",
-               a("publication.", 
-                      href = "https://wellcomeopenresearch.org/articles/4-140")), p("and",
-                a("preprint.", 
+               a("publication ", 
+                      href = "https://wellcomeopenresearch.org/articles/4-140")), p("and", a("preprint.", 
                       href = "https://wellcomeopenresearch.org/articles/4-140")),
              br(), 
              h4("Threshold for sampling"),
@@ -681,6 +686,8 @@ server <- function(input, output) {
             axis.ticks.y=element_blank()) + 
       annotate("text", x = 0.5, y = 50, size = 5, label = p, colour = "black", parse = TRUE)
     
+    
+    
   })
   
   ### ****************************************************************************************************************************************###
@@ -1015,6 +1022,13 @@ server <- function(input, output) {
       facet_wrap(~Syndrome) + 
       theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
       scale_y_discrete("Antibiotic")
+    
+  }, height = 1000, width = 1500)
+  
+  output$dataplot3 <- renderPlot({
+    
+    ggplot(cost_levels_Zambia, aes(x= reorder(antibiotic, cost), y = cost)) + geom_bar(stat = "identity") + ggtitle("Costs (unit depends on input)") +
+      coord_flip() + theme_bw() + scale_x_discrete("Antibiotic") + scale_y_continuous("Cost")
     
   }, height = 1000, width = 1500)
   
